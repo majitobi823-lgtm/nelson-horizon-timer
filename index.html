@@ -159,26 +159,40 @@ function audio(){
  if(ac&&ac.state==='suspended')ac.resume()}catch(e){}
  return ac;
 }
-var VOL=[0,0.08,0.2,0.4,0.7,1];
-var NOTES=[523.25,587.33,659.25,698.46,783.99,880,987.77,1046.5,1174.66];
+var VOL=[0,0.12,0.28,0.5,0.8,1];
+var NOTES=[659.25,740,830.6,880,987.77,1108.7,1244.5,1318.5,1480];
+var master=null;
+function chain(){
+ if(master)return master;
+ master=ac.createGain();master.gain.value=1;
+ var comp=ac.createDynamicsCompressor();
+ comp.threshold.value=-18;comp.knee.value=12;comp.ratio.value=8;comp.attack.value=0.003;comp.release.value=0.15;
+ master.connect(comp);comp.connect(ac.destination);
+ return master;
+}
 function tone(f,t0,dur,gain){
- var o=ac.createOscillator(),g=ac.createGain();
- o.type='sine';o.frequency.value=f;
+ var out=chain(),g=ac.createGain();
  g.gain.setValueAtTime(0.0001,t0);
- g.gain.linearRampToValueAtTime(gain,t0+0.05);
+ g.gain.linearRampToValueAtTime(gain,t0+0.015);
+ g.gain.setValueAtTime(gain,t0+Math.max(0.02,dur-0.06));
  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
- o.connect(g);g.connect(ac.destination);o.start(t0);o.stop(t0+dur+0.05);
+ g.connect(out);
+ [['triangle',f,1],['square',f*2,0.22],['sine',f/2,0.5]].forEach(function(p){
+  var o=ac.createOscillator(),pg=ac.createGain();
+  o.type=p[0];o.frequency.value=p[1];pg.gain.value=p[2];
+  o.connect(pg);pg.connect(g);o.start(t0);o.stop(t0+dur+0.05);
+ });
 }
 function burst(kind,idx){
  if(muted||!audio())return;
- var f=NOTES[idx%NOTES.length],g=VOL[S.settings.vol]*0.6,t=ac.currentTime,p=idx%3;
+ var f=NOTES[idx%NOTES.length],g=VOL[S.settings.vol]*0.55,t=ac.currentTime,p=idx%3;
  if(kind==='warn'){
-  tone(f,t,0.6,g*0.6);tone(f*1.5,t+0.3,0.6,g*0.6);
+  tone(f,t,0.7,g*0.45);tone(f*1.5,t+0.35,0.9,g*0.45);
  }else{
-  if(p===0){tone(f,t,0.3,g);tone(f*1.25,t+0.3,0.3,g);tone(f,t+0.6,0.3,g)}
-  else if(p===1){tone(f*1.25,t,0.25,g);tone(f,t+0.25,0.25,g);tone(f*1.25,t+0.5,0.25,g);tone(f,t+0.75,0.2,g)}
-  else{tone(f,t,0.5,g);tone(f*1.5,t+0.5,0.45,g)}
-  if(navigator.vibrate)try{navigator.vibrate([200,100,200])}catch(e){}
+  if(p===0){for(var i=0;i<4;i++)tone(i%2?f*1.26:f,t+i*0.2,0.16,g)}
+  else if(p===1){tone(f,t,0.14,g);tone(f,t+0.18,0.14,g);tone(f,t+0.36,0.14,g);tone(f*1.5,t+0.6,0.35,g)}
+  else{tone(f,t,0.28,g);tone(f*1.5,t+0.3,0.28,g);tone(f,t+0.6,0.28,g);tone(f*1.5,t+0.9,0.2,g)}
+  if(navigator.vibrate)try{navigator.vibrate([250,120,250,120,250])}catch(e){}
  }
 }
 function testSound(){burst('urgent',0)}
