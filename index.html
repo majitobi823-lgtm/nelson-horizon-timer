@@ -140,7 +140,7 @@ function defaults(){
   ],
   sales:[],
   ft:{state:'idle',remainingMs:300000,endAt:0},
-  settings:{vol:3,warn:5,urgent:2,tab:'ALL'}
+  settings:{vol:3,warn:5,urgent:2,tab:'ALL',style:'bips'}
  };
 }
 function load(){
@@ -159,7 +159,7 @@ function audio(){
  if(ac&&ac.state==='suspended')ac.resume()}catch(e){}
  return ac;
 }
-var VOL=[0,0.12,0.28,0.5,0.8,1];
+var VOL=[0,0.12,0.28,0.5,0.8,1,1.5,2.2];
 var NOTES=[659.25,740,830.6,880,987.77,1108.7,1244.5,1318.5,1480];
 var master=null;
 function chain(){
@@ -183,13 +183,41 @@ function tone(f,t0,dur,gain){
   o.connect(pg);pg.connect(g);o.start(t0);o.stop(t0+dur+0.05);
  });
 }
+function beep(f,t,dur,g,type){
+ var out=chain(),o=ac.createOscillator(),gg=ac.createGain();
+ o.type=type||'square';o.frequency.value=f;
+ gg.gain.setValueAtTime(0.0001,t);gg.gain.linearRampToValueAtTime(g,t+0.008);
+ gg.gain.setValueAtTime(g,t+dur-0.02);gg.gain.linearRampToValueAtTime(0.0001,t+dur);
+ o.connect(gg);gg.connect(out);o.start(t);o.stop(t+dur+0.03);
+}
+function siren(t,g){
+ var out=chain(),o=ac.createOscillator(),gg=ac.createGain();
+ o.type='sawtooth';
+ o.frequency.setValueAtTime(600,t);o.frequency.linearRampToValueAtTime(1300,t+0.5);o.frequency.linearRampToValueAtTime(600,t+1.0);
+ gg.gain.setValueAtTime(0.0001,t);gg.gain.linearRampToValueAtTime(g*0.7,t+0.03);
+ gg.gain.setValueAtTime(g*0.7,t+0.95);gg.gain.linearRampToValueAtTime(0.0001,t+1.0);
+ o.connect(gg);gg.connect(out);o.start(t);o.stop(t+1.05);
+}
+function bell(f,t,g){
+ var out=chain();
+ [[1,1,1.4],[2.76,0.5,0.9],[5.4,0.25,0.5]].forEach(function(p){
+  var o=ac.createOscillator(),gg=ac.createGain();
+  o.type='sine';o.frequency.value=f*p[0];
+  gg.gain.setValueAtTime(0.0001,t);gg.gain.linearRampToValueAtTime(g*p[1],t+0.01);
+  gg.gain.exponentialRampToValueAtTime(0.0001,t+p[2]);
+  o.connect(gg);gg.connect(out);o.start(t);o.stop(t+p[2]+0.05);
+ });
+}
 function burst(kind,idx){
  if(muted||!audio())return;
- var f=NOTES[idx%NOTES.length],g=VOL[S.settings.vol]*0.55,t=ac.currentTime,p=idx%3;
+ var f=NOTES[idx%NOTES.length],g=VOL[S.settings.vol]*0.55,t=ac.currentTime,p=idx%3,st=S.settings.style||'bips';
  if(kind==='warn'){
   tone(f,t,0.7,g*0.45);tone(f*1.5,t+0.35,0.9,g*0.45);
  }else{
-  if(p===0){for(var i=0;i<4;i++)tone(i%2?f*1.26:f,t+i*0.2,0.16,g)}
+  if(st==='sirene'){siren(t,g)}
+  else if(st==='cloche'){bell(f*0.75,t,g);bell(f*1.125,t+0.5,g)}
+  else if(st==='digital'){var df=1800+idx*120;for(var j=0;j<4;j++)beep(df,t+j*0.14,0.09,g*0.8,'square')}
+  else if(p===0){for(var i=0;i<4;i++)tone(i%2?f*1.26:f,t+i*0.2,0.16,g)}
   else if(p===1){tone(f,t,0.14,g);tone(f,t+0.18,0.14,g);tone(f,t+0.36,0.14,g);tone(f*1.5,t+0.6,0.35,g)}
   else{tone(f,t,0.28,g);tone(f*1.5,t+0.3,0.28,g);tone(f,t+0.6,0.28,g);tone(f*1.5,t+0.9,0.2,g)}
   if(navigator.vibrate)try{navigator.vibrate([250,120,250,120,250])}catch(e){}
@@ -463,7 +491,9 @@ function openSettings(){
  S.forfaits.forEach(function(f){h+=foRowHtml(f)});
  h+='</div><button id="addFo" style="padding:6px 10px">+ Ajouter un forfait</button>';
  h+='<br><br><b>Alarmes</b>';
- h+='<label>Volume (1 à 5) <input id="vol" type="range" min="1" max="5" value="'+S.settings.vol+'"> <button id="tst" style="padding:5px 9px">Tester</button></label>';
+ h+='<label>Style de son <select id="sty">'+[['bips','Bips (différent par poste)'],['sirene','Sirène (très fort)'],['cloche','Cloche'],['digital','Bip aigu (perçant)']].map(function(o){return '<option value="'+o[0]+'"'+((S.settings.style||'bips')===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>';
+ h+='<label>Volume (1 doux à 7 maximum) <input id="vol" type="range" min="1" max="7" value="'+S.settings.vol+'"> <button id="tst" style="padding:5px 9px">Tester</button></label>';
+ h+='<div style="color:var(--mut);font-size:12px">Pense aussi à monter le volume « média » du téléphone.</div>';
  h+='<label>Alerte douce quand il reste (min) <input id="wn" type="number" min="1" value="'+S.settings.warn+'" style="width:70px"></label>';
  h+='<label>Alarme continue et clignotement quand il reste (min) <input id="ur" type="number" min="1" value="'+S.settings.urgent+'" style="width:70px"></label>';
  h+='<br><b>Données</b><div class="srow"><button id="exp">Sauvegarder (fichier)</button><button id="imp">Restaurer</button><button id="clr" style="background:#5a2623">Effacer l\'historique</button></div>';
@@ -477,7 +507,7 @@ function openSettings(){
   else if(b.dataset.rm)b.closest('.srow').remove();
   else if(b.id==='addSt')$('#sst').insertAdjacentHTML('beforeend',stRowHtml('','PS2 - ','PS2'));
   else if(b.id==='addFo')$('#sfo').insertAdjacentHTML('beforeend',foRowHtml({mode:'normal',label:'',min:30,price:0}));
-  else if(b.id==='tst'){S.settings.vol=+$('#vol').value;testSound()}
+  else if(b.id==='tst'){S.settings.vol=+$('#vol').value;S.settings.style=$('#sty').value;testSound()}
   else if(b.id==='exp')download('nelson-horizon-sauvegarde-'+dayKey(Date.now())+'.json',JSON.stringify(S),'application/json');
   else if(b.id==='imp')$('#impf').click();
   else if(b.id==='clr'){if(confirm('Effacer tout l\'historique des ventes ? Cette action est définitive.')){S.sales=[];save();toast('Historique effacé')}}
@@ -508,6 +538,7 @@ function applySettings(){
  if(!ns.length){toast('Il faut au moins un poste');return}
  S.stations=ns;S.forfaits=nf;
  S.settings.vol=+$('#vol').value;
+ S.settings.style=$('#sty').value;
  S.settings.warn=Math.max(1,parseInt($('#wn').value,10)||5);
  S.settings.urgent=Math.max(1,parseInt($('#ur').value,10)||2);
  save();renderRows();closeModal();toast('Réglages enregistrés');
